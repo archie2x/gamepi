@@ -1,0 +1,7 @@
+{
+  "image": "ghcr.io/archie2x/raspios-build-box:trixie-arm64",
+  "pinned": "ghcr.io/archie2x/raspios-build-box@sha256:613928240fa4a955e2149b61d6fcfbb3e27bd53621fddcb5ad98b7d5b3daef21",
+  "created": "2026-11-17T19:46:49.726330864Z",
+  "architecture": "arm64",
+  "os": "linux"
+}
