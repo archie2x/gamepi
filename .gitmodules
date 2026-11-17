@@ -1,0 +1,4 @@
+[submodule "sources/es-de"]
+	path = sources/es-de
+	url = https://github.com/archie2x-upstream/es-de.git
+	branch = gamepi
