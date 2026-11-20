@@ -1,4 +1,14 @@
-# Flycast runtime page size
+# Flycast page-size patch
+
+This patch documents the older locally built revision. The current build script
+uses unmodified upstream dev instead; do not apply this patch to dev.
+
+The maintainer closed PR 2616 as redundant with upstream commit
+`802874e79dd196faaba05fc2dd8c3d39c93c6657` (Linux ARM64 runtime page size).
+The dev build is pinned to `de3eab3e832071ef110a15891144bd4969970057`.
+See `runtime/retroarch/README.md` for current source/build paths.
+
+## Older installed build
 
 Base: flyinghead/flycast `3a5267a5e32438026e1c5b97d5de6cd77236f72c`.
 

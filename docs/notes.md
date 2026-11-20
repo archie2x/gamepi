@@ -261,3 +261,26 @@ runtime template to audio_driver=pulse. A short Dolphin/Batman run initialized
 PulseAudio successfully and exposed active stereo RetroArch channels routed
 to PHL 346E2C alongside ES-DE. Default sink unmuted, volume 0.40. No additional
 packages were installed. Remote-input work is deferred at Roger's request.
+
+## Upstream Flycast dev test, 2026-11-20
+
+Moved the existing fork checkout from build/flycast-src to sources/flycast,
+preserving origin (archie2x-upstream), upstream, and the submitted patch branch.
+Checked out upstream-dev at de3eab3e832071ef110a15891144bd4969970057 and verified
+it contains 802874e79dd196faaba05fc2dd8c3d39c93c6657. Working tree and required
+submodules are clean. No local source patch applied. Native Homebrew Clang/LLD
+built the ARM64 core in build/flycast-dev. Dev adds basis_universal to the
+required submodules. Deployable core SHA256:
+273518846bb40c9b0259cdb5fbe3ed313731c8e8335c0cf2267051456ef954e7.
+
+Deployed separately under ~/.cache/gamepi/flycast-dev on the Pi. The runtime
+page-size/protection checker passed with host and core both reporting 16384.
+Launched Sonic Adventure using that core, AMD Vulkan, and working PulseAudio
+routing. It remains running for Roger's gameplay test. ES-DE's normal installed
+core has not been replaced. Existing unsupported texture-upscaling option
+lookups appear in both old and new cores and do not stop startup.
+Audio fix was separately committed and pushed as 6a4b70f before this build.
+
+Roger confirmed upstream dev gameplay works. Atomically installed that tested
+binary as ~/.local/share/gamepi/retroarch/cores/flycast_libretro.so; normal
+ES-DE launches now use upstream dev. The running test game was not interrupted.

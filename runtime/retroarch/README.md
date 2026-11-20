@@ -25,20 +25,22 @@ does not inherit the graphical environment.
 
 ## Flycast core
 
-Build with `python3 scripts/build-flycast.py`. The pinned source and runtime
-page-size patch are documented in `patches/flycast/README.md`. The output is
-`build/flycast-core/flycast_runtimepages_libretro.so`.
+Build with `python3 scripts/build-flycast.py`. The checkout is in
+`sources/flycast`; generated output is under `build/flycast-dev`. The script
+pins upstream dev commit `de3eab3e832071ef110a15891144bd4969970057` and applies
+no source patch. This includes upstream's Linux ARM64 runtime page-size fix
+`802874e79dd196faaba05fc2dd8c3d39c93c6657`.
 
-The source uses `_SC_PAGESIZE` at runtime for Linux allocations, protection and
-page tracking. The ELF has 64 KB LOAD alignment. The same binary passes the
-memory-protection regression check on 4 KB Linux and gamepi's 16 KB kernel.
-Game execution is being tested separately.
+The deployable core is `build/flycast-dev/flycast-dev_libretro.so`, alongside
+`page-symbols.json` for `scripts/check-flycast-pages.py`. It passes the actual
+page-protection check on gamepi's 16 KB kernel. Roger confirmed Sonic Adventure gameplay with this build. It is installed at
+`~/.local/share/gamepi/retroarch/cores/flycast_libretro.so` for ES-DE launches.
 
 ## Display and input
 
 The frontend uses Vulkan on the AMD GPU through XWayland, with
 `video_context_driver = "vk_x"` and `input_driver = "x"`. Controller input uses
-`udev`. These settings are saved in the Gamepi configuration. The patched
+`udev`. These settings are saved in the Gamepi configuration. The upstream dev
 Flycast core is installed at
 `~/.local/share/gamepi/retroarch/cores/flycast_libretro.so` and selected by ES-DE's
 Dreamcast definition.

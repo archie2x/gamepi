@@ -12,10 +12,9 @@ if args.jobs < 1:
     parser.error('--jobs must be positive')
 
 root = Path(__file__).resolve().parent.parent
-source = root / 'build/flycast-src'
-build = root / 'build/flycast-core'
-revision = '3a5267a5e32438026e1c5b97d5de6cd77236f72c'
-patch = root / 'patches/flycast/0001-linux-runtime-page-size.patch'
+source = root / 'sources/flycast'
+build = root / 'build/flycast-dev'
+revision = 'de3eab3e832071ef110a15891144bd4969970057'
 
 def run(*command, **kwargs):
     return subprocess.run(command, check=True, **kwargs)
@@ -24,23 +23,18 @@ if not (root / 'toolchain/sysroot/usr/include/stdio.h').is_file():
     parser.error('Extract the pinned sysroot with toolchain/extract-sysroot.py first')
 if not (source / '.git').exists():
     source.parent.mkdir(exist_ok=True)
-    run('git', 'clone', '--no-checkout', '--depth', '1',
+    run('git', 'clone', '--branch', 'dev', '--depth', '1',
         'https://github.com/flyinghead/flycast.git', str(source))
 if subprocess.run(['git', '-C', str(source), 'cat-file', '-e', revision],
                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
-    run('git', '-C', str(source), 'fetch', '--depth', '1', 'origin', revision)
+    run('git', '-C', str(source), 'fetch', '--no-recurse-submodules', '--depth', '1', 'https://github.com/flyinghead/flycast.git', revision)
 head = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
 if head != revision or not (source / 'CMakeLists.txt').exists():
     run('git', '-C', str(source), 'checkout', '--detach', revision)
-reverse = subprocess.run(['git', '-C', str(source), 'apply', '--reverse', '--check', str(patch)],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-if reverse.returncode:
-    run('git', '-C', str(source), 'apply', '--check', str(patch))
-    run('git', '-C', str(source), 'apply', str(patch))
 run('git', '-C', str(source), 'submodule', 'update', '--init', '--recursive', '--depth', '1',
     'core/deps/libchdr', 'core/deps/glslang', 'core/deps/Vulkan-Headers',
     'core/deps/VulkanMemoryAllocator', 'core/deps/rcheevos', 'core/deps/asio',
-    'core/deps/tinygettext')
+    'core/deps/tinygettext', 'core/deps/libjuice', 'core/deps/basis_universal')
 run('cmake', '-S', str(source), '-B', str(build), '-G', 'Ninja',
     f'-DCMAKE_TOOLCHAIN_FILE={root / "toolchain/cmake/aarch64-linux-gnu.cmake"}',
     '-DCMAKE_BUILD_TYPE=RelWithDebInfo', '-DCMAKE_OSX_ARCHITECTURES=',
@@ -60,5 +54,5 @@ symbols = {parts[2]: int(parts[0], 16) for line in output.splitlines()
 (build / 'page-symbols.json').write_text(json.dumps(
     {name: symbols[symbol] for name, symbol in names.items()}, indent=2) + '\n')
 run('/opt/homebrew/opt/llvm/bin/llvm-strip', '--strip-debug', '-o',
-    str(build / 'flycast_runtimepages_libretro.so'), str(core))
-print(build / 'flycast_runtimepages_libretro.so')
+    str(build / 'flycast-dev_libretro.so'), str(core))
+print(build / 'flycast-dev_libretro.so')
