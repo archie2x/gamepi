@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+if [ "$1" = configure ]; then
+    depmod -a @KERNEL_RELEASE@
+fi

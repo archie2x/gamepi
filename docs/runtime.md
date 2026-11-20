@@ -1,5 +1,20 @@
 # Gamepi runtime
 
+The frontend/emulator configuration below describes the original USB-root
+installation unless noted otherwise. The fresh microSD reproducibility test
+currently covers the GPU/kernel layer only; the original drive is disconnected.
+See [GPU package setup](../packaging/gamepi-amdgpu/README.md) for that recipe.
+
+On the fresh card, both GPU packages installed using APT dependencies;
+install/reinstall/removal and stock-kernel reinstall coexistence passed.
+Reboot selected `6.18.48-v8-16k+` with 16 KB pages, AMD GPU console output and
+RX 460 RADV Vulkan enumeration. At idle the link is 2.5 GT/s, with an 8 GT/s
+high power state available; sustained loaded-link verification remains open.
+`vulkan-tools` was installed separately for diagnostics. The card currently
+requires a sudo password after reboot. Avahi detected a name conflict and
+advertises `gamepi-2.local`; direct-IP SSH works. Neither the GPU packages nor
+their maintainer scripts alter hostname, network or sudo policy.
+
 ## Accepted display arrangement
 
 Use one shared Cage session for ES-DE and its child applications. The Pi's PCIe
@@ -220,6 +235,41 @@ configuration live under
 `~/.local/share/gamepi/retroarch/saves/dolphin-emu/User`, separately from the
 standalone application's data.
 
+### Mario Galaxy ultrawide (confirmed 2026-11-20)
+
+Roger confirmed the USA game's 21:9 Action Replay code works well in the
+Dolphin core. The code is in the core user's `GameSettings/RMGE01.ini`:
+
+```ini
+[ActionReplay]
+$21:9 Aspect Ratio
+046A4964 40155555
+040972AC 60000000
+046AC6D4 3F124925
+04367118 60000000
+
+[ActionReplay_Enabled]
+$21:9 Aspect Ratio
+```
+
+In `~/.config/gamepi/retroarch/overrides/dolphin-emu/`, the content override
+`Super Mario Galaxy (USA) (En,Fr,Es).nkit.cfg` sets `aspect_ratio_index = "24"`
+(full viewport). There is no Mario-specific `.opt` file: all Dolphin games use
+the shared `dolphin-emu.opt`, with `dolphin_efb_scale = "2"`,
+`dolphin_cheats_enabled = "enabled"` and `dolphin_cheats_import = "disabled"`.
+Dolphin's code engine is enabled globally, while only Mario's game INI enables
+the ultrawide code. Native Wii widescreen stays enabled and the generic
+widescreen hack stays disabled. The ultrawide test restored the saved position
+after restart and was confirmed by Roger. The later shared 2x resolution
+change was verified in the files with the game closed; gameplay at 2x is not
+yet tested. The code and full-viewport override apply only to Mario Galaxy.
+The published code targets 21:9, while 3440x1440 is slightly wider; exact
+aspect correction has not been separately measured.
+
+The ultrawide code is specific to the test display and must be disabled for a
+16:9 TV; return Mario's RetroArch aspect setting to Core Provided at that time.
+Internal resolution is a shared Dolphin default, independent of display size.
+
 ### Standalone Dolphin comparison
 
 The existing Dolphin 2609a AppImage was tested with a separate user directory,
@@ -264,6 +314,39 @@ the application when emulation stops. Logs and samples are under
 user directory's `Logs` folder.
 
 ## Kernel and performance findings
+
+### PCIe Gen 3 on RX 460 (2026-11-20)
+
+`/boot/firmware/config.txt` already requested Gen 3. The boot log reported
+8 GT/s x1, but the live link subsequently ran at 5 GT/s and AMD's
+`pp_dpm_pcie` exposed only Gen 1/2 states. The firmware setting alone did not
+keep the GPU at Gen 3.
+
+Keep `dtparam=pciex1_gen=3` in `config.txt` and append
+`amdgpu.pcie_gen_cap=0x70007` to the existing single line in
+`/boot/firmware/cmdline.txt`. This driver capability mask enables Gen 1–3 for
+both GPU and platform; its definitions are in the kernel's
+`drivers/gpu/drm/amd/include/amd_pcie.h`. The kernel and modules were unchanged.
+
+After reboot, both PCIe sysfs `current_link_speed` and AMD's active power state
+reported 8 GT/s, with actual width x1. A 40-second Mario Galaxy sample retained
+that speed with zero reported correctable, nonfatal or fatal PCIe errors.
+The power-state table's x8/x16 labels are not the negotiated physical width.
+
+Reloading the same RetroArch save state gave sampled window-title FPS averages
+of 40.03 at Gen 2 and 54.41 at Gen 3. Samples include startup/scene variation;
+they are a short comparison, not a sustained gameplay benchmark. Both tests
+held the CPU at its stock 2.4 GHz using the temporary `performance` governor;
+that governor remains active for this performance investigation and resets on
+reboot. No CPU overclock or persistent governor change was installed.
+Measurements are `~/.cache/gamepi/galaxy-gen{2,3}-comparison.json` on the Pi.
+
+A subsequent 20-second gameplay sample measured 46.86–49.56 FPS with Gen 3
+stable, no reported correctable PCIe errors and no Pi throttling. Neither main
+CPU thread saturated a core; the game's AMD gfx engine averaged 64.3% busy.
+GPU memory snapshots alternated between 300 and 1750 MHz despite the core
+remaining at 1250 MHz. The bottleneck is not yet isolated. Details are in
+`~/.cache/gamepi/galaxy-slow-gen3.json`; no settings changed during this sample.
 
 The working kernel is `6.18.48-v8-16k+`, page size 16384, with Raspberry Pi AMD
 GPU support from PR 7113. Preserve boot files and corresponding modules before

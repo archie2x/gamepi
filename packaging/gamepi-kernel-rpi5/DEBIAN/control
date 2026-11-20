@@ -1,0 +1,10 @@
+Package: gamepi-kernel-rpi5
+Version: @KERNEL_VERSION@
+Section: kernel
+Priority: optional
+Architecture: arm64
+Maintainer: Gamepi <archie2x@users.noreply.github.com>
+Depends: kmod
+Description: Tested Raspberry Pi 5 16K kernel with PCIe GPU support
+ Repackages the pinned Raspberry Pi PR 7113 bcm2712 build, including modules
+ and matching device trees. Boot selection is managed by gamepi-amdgpu.

@@ -284,3 +284,103 @@ Audio fix was separately committed and pushed as 6a4b70f before this build.
 Roger confirmed upstream dev gameplay works. Atomically installed that tested
 binary as ~/.local/share/gamepi/retroarch/cores/flycast_libretro.so; normal
 ES-DE launches now use upstream dev. The running test game was not interrupted.
+
+## PCIe Gen 3 test, 2026-11-20
+
+The existing firmware Gen 3 request trained at 8 GT/s during boot, but the
+running RX 460 link dropped to 5 GT/s and AMD exposed no Gen 3 power state.
+Removed the inline comment from the existing `dtparam=pciex1_gen=3` line;
+rebooting with that alone still resulted in Gen 2. Added the verified driver
+capability override `amdgpu.pcie_gen_cap=0x70007` to the existing firmware
+cmdline and rebooted. Live link and active AMD power state now both report
+8 GT/s; negotiated width remains x1. Existing kernel, initramfs policy and
+other boot arguments were preserved.
+
+Saved Mario Galaxy before reboot and loaded that state for each comparison.
+An extra test launch briefly overlapped a game Roger had already started;
+terminated the extra process before collecting either comparison dataset.
+With one game instance and CPU governor held at stock 2.4 GHz performance,
+six Gen 2 FPS samples averaged 40.03; eight Gen 3 samples averaged 54.41.
+Gen 3 remained active through the 40-second loaded sample, and all reported
+PCIe AER error counters were zero afterward. Vulkan selected RX 460 and the
+PulseAudio driver initialized. The game remains running; CPU governor is
+still temporarily performance, with no persistent governor configuration.
+See docs/runtime.md for boot settings and measurement paths.
+
+During Roger's subsequent slow gameplay report (47.75 FPS), a nonintrusive
+20-second sample measured 46.86–49.56 FPS. Gen 3 stayed at 8 GT/s, reported
+correctable PCIe errors remained zero, CPU stayed at 2.4 GHz, temperature was
+57.6 C, and throttled=0x0. Main/render and emulation CPU threads used 59.9%
+and 58.2% of one core; the game's AMD gfx engine accumulated 64.3% busy time.
+GPU core stayed at 1250 MHz, while memory snapshots alternated between 300
+and 1750 MHz. This does not isolate a bottleneck; memory power management is
+a candidate for a controlled test. No settings or game state were changed.
+Detailed sample: ~/.cache/gamepi/galaxy-slow-gen3.json on gamepi.
+
+## Mario Galaxy ultrawide, 2026-11-20
+
+Applied the four-line USA/NTSC 21:9 Action Replay code to the Dolphin core's
+User/GameSettings/RMGE01.ini, with the named code enabled. Created Mario-only
+RetroArch `.cfg` (full viewport, aspect_ratio_index=24) and `.opt` (existing
+profile with internal cheats enabled and cheat import disabled). Native Wii
+widescreen remains on; generic widescreen hack remains off. Saved Roger's
+current position before stopping, restarted with one core instance, verified
+the content overrides loaded, and restored the saved state. Roger confirmed
+the result works great. No internal resolution, controller or other-game
+settings changed. The game remains running. Runtime documentation includes
+the exact code and file locations. Source of the published code:
+https://www.reddit.com/r/DolphinEmulator/comments/zuuzik/.
+
+Roger requested 2x native as the default for all Dolphin games. With RetroArch
+closed, set dolphin_efb_scale=2 in the shared dolphin-emu.opt. Enabled Dolphin's
+internal code engine globally and disabled the RetroArch cheat importer, then
+removed Mario's copied .opt after checking that it differed only in these
+options. Mario's game INI and viewport .cfg remain game-specific. This removes
+the duplicated controller/resolution profile. Updated runtime/retroarch/Dolphin.opt
+to match. Readback verified the settings; no game was launched, so the 2x
+performance/visual test remains for the next launch. Ultrawide is a test-screen
+setting, not the intended 16:9 TV default.
+
+## Fresh microSD GPU/kernel packaging test, 2026-11-20
+
+Roger imaged a separate 128 GB microSD with Raspberry Pi OS Lite 64-bit and
+completed stock updates. SSH/passwordless sudo verified. Root and firmware
+are /dev/mmcblk0p2 and /dev/mmcblk0p1; the USB installation is not attached.
+Initial running kernel was 6.18.50+rpt-rpi-2712 with 16 KB pages; installed
+stock kernel packages were already 6.18.60. No existing gamepi-kiosk package
+or AMD firmware/Mesa runtime was installed on the card.
+
+Built native-macOS gamepi-kernel-rpi5 6.18.48+eef16e98-1 and gamepi-amdgpu
+0.1.0 from checked-in packaging source and checksum-pinned upstream bcm2712
+artifact. No kernel compilation or rpi-update invocation. The artifact is a
+ZIP containing bcm2712_build.tar; cache and generated packages remain under
+build/. Five preservation/rollback tests passed. The kernel package owns
+canonical boot payload and matching modules; activation copies its 408 boot
+files to a separate os_prefix directory and generates a cmdline retaining
+the card's own PARTUUID=76f5e8f9-02. No display mode, CPU policy or EEPROM
+settings were changed.
+
+Installed both packages with apt, which resolved AMD firmware/Mesa dependencies.
+Verified reinstall idempotency, removed the activation package and verified
+all recorded stock boot-file hashes restored, then reinstalled activation.
+Reinstalled the stock 6.18.60 Pi 5 kernel through apt; its normal initramfs and
+raspi-firmware hooks ran while all custom boot payload hashes and the selected
+include remained intact. Fresh-card initramfs generation succeeded with its
+stock policy, so the old USB MODULES=most workaround was not carried over.
+Installed distro vulkan-tools solely as a diagnostic, outside package runtime
+dependencies. Rebooted; Roger confirmed console output on the AMD GPU monitor.
+Direct-IP SSH verified the booted kernel is 6.18.48-v8-16k+, page size 16384,
+root remains on mmcblk0p2, and amdgpu is bound to the RX 460. vulkaninfo
+identified AMD Radeon RX 460 Graphics (RADV POLARIS11), Mesa 26.2.7, Vulkan
+1.4.354. At idle the link is 2.5 GT/s; the AMD PCIe table offers 8 GT/s as its
+high state. An optional forced-high-state test did not run because sudo now
+requires a password after reboot; automatic GPU power management was not
+changed. Gen 3 under workload on this fresh card remains to be measured.
+
+The SSH interruption was mDNS naming: Avahi logged a hostname conflict and
+switched to gamepi-2.local. Static hostname and DHCP host_name remain gamepi;
+Ethernet is 192.168.87.250 and Wi-Fi 192.168.87.80. Direct SSH to the Ethernet
+IP, checked against gamepi.local's known host key, works. No network settings
+were changed. No kiosk, frontend, emulator or ROM setup has been installed on
+this card. GPU/kernel packaging source and the tested installation recipe are
+in this repository; binaries have not been published to an APT repository.

@@ -1,0 +1,9 @@
+{
+  "revision": "eef16e98c3d22e8624a83a6aee3266dd1d70435b",
+  "release": "6.18.48-v8-16k+",
+  "version": "6.18.48+eef16e98-1",
+  "artifact_url": "https://builds.raspberrypi.com/github/linux/eef16e98c3d22e8624a83a6aee3266dd1d70435b/bcm2712",
+  "artifact_sha256": "03d6002c9ad5fdbd36b803e947c527deb203cd516ca64a27fb94d4e473eb57a9",
+  "source_url": "https://github.com/raspberrypi/linux/tree/eef16e98c3d22e8624a83a6aee3266dd1d70435b",
+  "pull_request": "https://github.com/raspberrypi/linux/pull/7113"
+}

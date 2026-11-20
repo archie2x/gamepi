@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+if [ "$1" = configure ]; then
+    /usr/lib/gamepi-amdgpu/boot-config configure
+fi

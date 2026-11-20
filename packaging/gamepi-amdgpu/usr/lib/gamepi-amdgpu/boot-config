@@ -1,0 +1,116 @@
+#!/usr/bin/python3
+"""Select the packaged kernel while keeping stock Raspberry Pi boot files."""
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import sys
+
+BEGIN = "# BEGIN gamepi-amdgpu\n"
+END = "# END gamepi-amdgpu\n"
+BLOCK = BEGIN + "[all]\ninclude gamepi/amdgpu/config.txt\n" + END
+
+
+def atomic_write(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".gamepi-tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
+
+
+def without_block(text):
+    if text.count(BEGIN) != text.count(END) or text.count(BEGIN) > 1:
+        raise ValueError("Unbalanced gamepi-amdgpu markers in config.txt")
+    if BEGIN not in text:
+        return text
+    start = text.index(BEGIN)
+    end = text.index(END, start) + len(END)
+    return text[:start] + text[end:]
+
+
+def configure(root=Path("/"), check_host=True):
+    boot = root / "boot/firmware"
+    if check_host:
+        model = (root / "proc/device-tree/model").read_text().rstrip("\0")
+        if not model.startswith("Raspberry Pi 5 "):
+            raise ValueError("This package currently supports Raspberry Pi 5 only")
+        if not boot.is_mount():
+            raise ValueError("/boot/firmware must be mounted")
+    payload = root / "usr/lib/gamepi-kernel-rpi5"
+    manifest = json.loads((payload / "manifest.json").read_text())
+    revision = manifest["revision"]
+    if not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise ValueError("Invalid packaged kernel revision")
+    stock = boot / "config.txt"
+    original = stock.read_text()
+    base = without_block(original)
+    # Do not silently replace another explicitly selected boot environment.
+    for line in base.splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key.strip() == "os_prefix" and value.split("#", 1)[0].strip():
+            raise ValueError("An existing os_prefix needs explicit integration")
+    command = (boot / "cmdline.txt").read_text().strip()
+    if "\n" in command or not any(v.startswith("root=") for v in command.split()):
+        raise ValueError("Expected a single stock cmdline containing root=")
+    args = [v for v in command.split() if not v.startswith(
+        ("arm64.nodczva=", "amdgpu.pcie_gen_cap="))]
+    # This tested build boots plain ext4 directly, without an initramfs.
+    if "rootfstype=ext4" not in args or any(v.startswith(("cryptdevice=", "rd.luks")) for v in args):
+        raise ValueError("The direct-boot profile requires a plain ext4 root")
+    args += ["arm64.nodczva=1", "amdgpu.pcie_gen_cap=0x70007"]
+    source = payload / "boot"
+    for name, expected in manifest["boot_sha256"].items():
+        path = Path(name)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError("Invalid packaged boot path")
+        if hashlib.sha256((source / path).read_bytes()).hexdigest() != expected:
+            raise ValueError("Packaged boot file failed checksum: " + name)
+    prefix = "gamepi/amdgpu/" + revision + "/"
+    destination = boot / prefix
+    if not destination.exists():
+        stage = destination.with_name("." + revision + ".staging")
+        if stage.exists():
+            shutil.rmtree(stage)
+        shutil.copytree(source, stage)
+        os.replace(stage, destination)
+    else:
+        for name, expected in manifest["boot_sha256"].items():
+            path = destination / name
+            if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+                raise ValueError("Existing Gamepi boot file differs: " + name)
+    atomic_write(destination / "cmdline.txt", " ".join(args) + "\n")
+    atomic_write(boot / "gamepi/amdgpu/config.txt",
+                 "[all]\nos_prefix=" + prefix + "\nkernel=kernel_2712.img\n"
+                 "dtparam=pciex1_gen=3\nauto_initramfs=0\n")
+    # Activate only after the entire matching boot set has been installed.
+    atomic_write(stock, base + ("" if base.endswith("\n") else "\n") + BLOCK)
+    print("Gamepi AMD boot configured for " + manifest["release"] + "; reboot to activate")
+
+
+def remove(root=Path("/")):
+    boot = root / "boot/firmware"
+    stock = boot / "config.txt"
+    if not stock.exists():
+        return
+    text = stock.read_text()
+    updated = without_block(text)
+    if updated != text:
+        atomic_write(stock, updated)
+    managed = boot / "gamepi/amdgpu"
+    if managed.exists():
+        shutil.rmtree(managed)
+    print("Gamepi AMD boot selection removed; stock boot configuration restored")
+
+
+if __name__ == "__main__":
+    try:
+        if sys.argv[1:] == ["configure"]:
+            configure()
+        elif sys.argv[1:] == ["remove"]:
+            remove()
+        else:
+            raise ValueError("Usage: boot-config configure|remove")
+    except (OSError, ValueError, KeyError) as error:
+        sys.exit(str(error))

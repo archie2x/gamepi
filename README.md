@@ -39,10 +39,18 @@ frontend restart behavior, shared defaults, and the library editing group.
 Build it with `python3 scripts/build-kiosk-package.py`; see
 [package source and setup](packaging/gamepi-kiosk/README.md).
 
+The GPU/kernel packages are built with
+`python3 scripts/build-gpu-packages.py` from a checksum-pinned upstream binary
+artifact. `gamepi-amdgpu` depends on the packaged Pi 5 kernel and distro AMD
+firmware/Mesa, and selects a separate versioned boot directory. See
+[GPU package source and fresh-card setup](packaging/gamepi-amdgpu/README.md).
+
 The older `packaging/gamepi-session` prototype implements a superseded launch
-scheme and must not be installed as the current setup. A separate USB library
-drive and an optional clean OS installation are being considered; neither has
-been performed. The Pi's PCIe link is occupied by the AMD GPU.
+scheme and must not be installed as the current setup. A fresh Raspberry Pi OS
+Lite 64-bit microSD installation is now testing the packaged GPU/kernel layer.
+The original USB installation is retained separately; its frontend/emulator
+configuration has not yet been reproduced on the card. A separate library
+drive remains a proposal. The Pi's PCIe link is occupied by the AMD GPU.
 
 The native macOS cross-compilation setup works. Its C++ and stock SDL2 probes
 have run successfully on gamepi with a 16 KB kernel. The runtime uses downloaded

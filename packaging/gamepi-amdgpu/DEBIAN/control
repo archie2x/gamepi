@@ -1,0 +1,10 @@
+Package: gamepi-amdgpu
+Version: 0.1.0
+Section: admin
+Priority: optional
+Architecture: all
+Maintainer: Gamepi <archie2x@users.noreply.github.com>
+Depends: gamepi-kernel-rpi5 (= @KERNEL_VERSION@), firmware-amd-graphics, libgl1-mesa-dri, mesa-vulkan-drivers, python3
+Description: AMD PCIe GPU boot configuration for Gamepi on Raspberry Pi 5
+ Activates the tested kernel in a separate firmware boot directory and enables
+ the tested AMD and PCIe settings. Stock kernels and boot files are retained.
