@@ -1,0 +1,7 @@
+[Unit]
+Description=Gamepi gaming kiosk
+Wants=greetd.service
+After=systemd-user-sessions.service
+
+[Install]
+WantedBy=multi-user.target

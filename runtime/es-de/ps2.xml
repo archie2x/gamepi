@@ -1,0 +1,11 @@
+<systemList>
+  <system>
+    <name>ps2</name>
+    <fullname>Sony PlayStation 2</fullname>
+    <path>%ROMPATH%/ps2</path>
+    <extension>.bin .BIN .chd .CHD .cso .CSO .dump .DUMP .elf .ELF .gz .GZ .img .IMG .iso .ISO .m3u .M3U .mdf .MDF .nrg .NRG</extension>
+    <command label="ARMSX2 AppImage (Standalone)">/home/roger/Applications/ARMSX2-2.9.5-Linux-arm64-16K-pages.AppImage -batch -fullscreen -- %ROM%</command>
+    <platform>ps2</platform>
+    <theme>ps2</theme>
+  </system>
+</systemList>

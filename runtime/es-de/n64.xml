@@ -1,0 +1,9 @@
+<system>
+  <name>n64</name>
+  <fullname>Nintendo 64</fullname>
+  <path>%ROMPATH%/n64</path>
+  <extension>.z64 .Z64 .n64 .N64 .v64 .V64 .zip .ZIP .7z .7Z</extension>
+  <command label="Mupen64Plus-Next (RetroArch)">/home/roger/.local/bin/gamepi-retroarch -v --log-file /home/roger/.cache/gamepi/retroarch/mupen.log -L /home/roger/.local/share/gamepi/retroarch/cores/mupen64plus_next_libretro.so %ROM%</command>
+  <platform>n64</platform>
+  <theme>n64</theme>
+</system>

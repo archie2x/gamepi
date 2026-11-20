@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<systemList>
+  <system>
+    <name>dreamcast</name>
+    <fullname>Sega Dreamcast</fullname>
+    <path>%ROMPATH%/dreamcast</path>
+    <extension>.cdi .CDI .chd .CHD .cue .CUE .dat .DAT .elf .ELF .gdi .GDI .iso .ISO .lst .LST .m3u .M3U .7z .7Z .zip .ZIP</extension>
+    <command label="Flycast (RetroArch)">/home/roger/.local/bin/gamepi-retroarch -L /home/roger/.local/share/gamepi/retroarch/cores/flycast_libretro.so %ROM%</command>
+    <command label="Flycast (Standalone)">/home/roger/Applications/flycast-aarch64.AppImage %ROM%</command>
+    <platform>dreamcast</platform>
+    <theme>dreamcast</theme>
+  </system>
+</systemList>

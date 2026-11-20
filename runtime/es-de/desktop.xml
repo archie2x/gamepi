@@ -1,0 +1,11 @@
+<systemList>
+  <system>
+    <name>desktop</name>
+    <fullname>Desktop Applications</fullname>
+    <path>~/.local/share/gamepi/launchers</path>
+    <extension>.AppImage .desktop .sh</extension>
+    <command label="Suspend ES-DE">%ENABLESHORTCUTS% %EMULATOR_OS-SHELL% %ROM%</command>
+    <platform>pcwindows</platform>
+    <theme>desktop</theme>
+  </system>
+</systemList>

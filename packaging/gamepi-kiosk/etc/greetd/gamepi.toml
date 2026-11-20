@@ -1,0 +1,13 @@
+[terminal]
+vt = 1
+
+[general]
+source_profile = false
+
+[default_session]
+command = "/usr/sbin/agreety -c /usr/bin/gamepi-kiosk-session"
+user = "_greetd"
+
+[initial_session]
+command = "/usr/bin/gamepi-kiosk-session"
+user = "roger"

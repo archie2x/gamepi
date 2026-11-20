@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=RetroArch
+Comment=Configure controllers and run libretro cores
+Exec=/home/roger/.local/bin/gamepi-retroarch
+Icon=retroarch
+Terminal=false
+Categories=Game;

@@ -1,0 +1,5 @@
+/etc/gamepi/session.conf
+/etc/gamepi/es-de/settings/es_settings.xml
+/etc/greetd/gamepi.toml
+/etc/systemd/system/greetd.service.d/gamepi.conf
+/etc/gamepi/library-editors

@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+. /etc/gamepi/session.conf
+: "${XDG_RUNTIME_DIR:?A PAM login session must supply XDG_RUNTIME_DIR}"
+export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=gamepi
+export PATH="$HOME/.local/bin:$PATH"
+if [ ! -x "$GAMEPI_FRONTEND" ]; then
+    echo "Gamepi frontend is missing or not executable: $GAMEPI_FRONTEND" >&2
+    exit 1
+fi
+if [ ! -f "$HOME/ES-DE/settings/es_settings.xml" ]; then
+    install -Dm644 /etc/gamepi/es-de/settings/es_settings.xml "$HOME/ES-DE/settings/es_settings.xml"
+fi
+while :; do
+    status=0
+    dbus-run-session -- cage -- "$GAMEPI_FRONTEND" || status=$?
+    echo "Gamepi frontend exited (status $status)" >&2
+    [ "$GAMEPI_RESTART" = yes ] || exit "$status"
+    sleep "$GAMEPI_RESTART_DELAY"
+done

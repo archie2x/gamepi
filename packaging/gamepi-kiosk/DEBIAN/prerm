@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
+    systemctl stop greetd.service || true
+    deb-systemd-helper disable gamepi-kiosk.target >/dev/null
+fi

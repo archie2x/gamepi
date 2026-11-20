@@ -1,0 +1,61 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index fee2357..416f4c5 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -328,7 +328,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
+ 		$<$<BOOL:${WINDOWS_STORE}>:_WIN32_WINNT=0x0A00>
+ 		$<$<OR:$<BOOL:${MINGW}>,$<BOOL:${MSVC}>>:_USE_MATH_DEFINES>)
+ 
+-if(UNIX AND NOT ANDROID AND NOT APPLE)
++if(UNIX AND NOT ANDROID AND NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+ 	execute_process(COMMAND getconf PAGESIZE OUTPUT_VARIABLE PAGE_SIZE OUTPUT_STRIP_TRAILING_WHITESPACE)
+ 	target_compile_definitions(${PROJECT_NAME} PRIVATE PAGE_SIZE=${PAGE_SIZE})
+ endif()
+diff --git a/core/stdclass.cpp b/core/stdclass.cpp
+index 445f4e2..924a963 100644
+--- a/core/stdclass.cpp
++++ b/core/stdclass.cpp
+@@ -14,7 +14,7 @@
+ 
+ #ifdef _WIN32
+ #include <algorithm>
+-#elif defined(__ANDROID__)
++#elif defined(__linux__)
+ #include <unistd.h>
+ #endif
+ 
+@@ -208,7 +208,7 @@ void cResetEvent::Wait()
+     state = false;
+ }
+ 
+-#if defined(__ANDROID__) && (HOST_CPU == CPU_ARM64 || HOST_CPU == CPU_X64)
++#if defined(__linux__) && (!defined(__ANDROID__) || HOST_CPU == CPU_ARM64 || HOST_CPU == CPU_X64)
+ const unsigned long PAGE_SIZE = (unsigned long)sysconf(_SC_PAGESIZE);
+ #endif
+ 
+diff --git a/core/stdclass.h b/core/stdclass.h
+index e618087..ec86564 100644
+--- a/core/stdclass.h
++++ b/core/stdclass.h
+@@ -14,13 +14,19 @@
+ #include <cassert>
+ #include <time.h>
+ 
+-#if defined(__ANDROID__)
++#if defined(__linux__)
+ #undef PAGE_MASK
+ #endif
+-#if defined(__ANDROID__) && (HOST_CPU == CPU_ARM64 || HOST_CPU == CPU_X64)
++#if defined(__linux__) && (!defined(__ANDROID__) || HOST_CPU == CPU_ARM64 || HOST_CPU == CPU_X64)
+ #undef PAGE_SIZE
+ extern const unsigned long PAGE_SIZE;
++#if defined(__ANDROID__)
+ #define MAX_PAGE_SIZE 16384
++#else
++// Linux ARM64 supports 4, 16 and 64 KB pages. Only structure layout needs a
++// compile-time maximum; allocations and protection use the runtime PAGE_SIZE.
++#define MAX_PAGE_SIZE 65536
++#endif
+ #elif defined(__APPLE__) && defined(__aarch64__)
+ #define PAGE_SIZE 16384
+ #elif !defined(PAGE_SIZE)
