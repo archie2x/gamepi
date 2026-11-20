@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract target development files from a Docker image; never run the image."""
+"""Export target development files with local Docker; never start the container."""
 import json
 import os
 from pathlib import Path
@@ -21,16 +21,14 @@ work.mkdir(exist_ok=True)
 if sysroot.exists():
     sys.exit(f"{sysroot} already exists; refusing to merge different sysroots")
 
-def crane(*args):
-    return subprocess.check_output(["crane", *args, "--platform", "linux/arm64"], text=True).strip()
-
-pinned = crane("digest", "--full-ref", image)
-config = json.loads(crane("config", pinned))
-if config.get("architecture") != "arm64" or config.get("os") != "linux":
+subprocess.run(["docker", "pull", "--platform", "linux/arm64", image], check=True)
+config = json.loads(subprocess.check_output(["docker", "image", "inspect", image], text=True))[0]
+if config.get("Architecture") != "arm64" or config.get("Os") != "linux":
     sys.exit("The image is not Linux ARM64")
-print(f"Extracting {pinned}\nImage created: {config.get('created')}", flush=True)
-# crane merges Docker layers and whiteouts. bsdtar extracts target SDK
-# directories and metadata. All compilation uses native macOS tools.
+pinned = image if "@sha256:" in image else config["RepoDigests"][0]
+print(f"Extracting {pinned}\nImage created: {config.get('Created')}", flush=True)
+# Docker exports the merged filesystem from a stopped container. bsdtar
+# extracts SDK directories and metadata; compilation uses native macOS tools.
 paths = [
     "usr/include", "usr/lib/aarch64-linux-gnu", "usr/lib/gcc/aarch64-linux-gnu",
     "usr/lib/ld-linux-aarch64.so.1", "usr/lib/linux",
@@ -39,8 +37,11 @@ paths = [
 with tempfile.TemporaryDirectory(prefix="sysroot-", dir=work) as temporary:
     stage = Path(temporary) / "root"
     stage.mkdir()
-    export = subprocess.Popen(["crane", "export", "--platform", "linux/arm64", pinned, "-"],
-                              stdout=subprocess.PIPE)
+    container = subprocess.check_output([
+        "docker", "create", "--platform", "linux/arm64",
+        "--label", "org.gamepi.purpose=sysroot", pinned,
+    ], text=True).strip()
+    export = subprocess.Popen(["docker", "export", container], stdout=subprocess.PIPE)
     command = ["bsdtar", "-xf", "-", "-C", str(stage), "--no-same-owner"]
     for path in paths:
         for prefix in ("", "./"):
@@ -49,9 +50,10 @@ with tempfile.TemporaryDirectory(prefix="sysroot-", dir=work) as temporary:
         result = subprocess.run(command, stdin=export.stdout)
     finally:
         export.stdout.close()
-    code = export.wait()
+        code = export.wait()
+        subprocess.run(["docker", "rm", container], check=True, stdout=subprocess.DEVNULL)
     if code or result.returncode:
-        sys.exit(f"Image extraction failed: crane={code}, bsdtar={result.returncode}")
+        sys.exit(f"Image extraction failed: docker={code}, bsdtar={result.returncode}")
     # Absolute Linux symlinks must resolve inside this directory on macOS.
     for directory, dirs, names in os.walk(stage, followlinks=False):
         for name in dirs + names:
@@ -69,7 +71,7 @@ with tempfile.TemporaryDirectory(prefix="sysroot-", dir=work) as temporary:
         sys.exit("Image is missing the ARM64 kernel userspace headers")
     stage.rename(sysroot)
 
-lock = {"image": image, "pinned": pinned, "created": config.get("created"),
-        "architecture": config["architecture"], "os": config["os"]}
+lock = {"image": image, "pinned": pinned, "created": config.get("Created"),
+        "architecture": config["Architecture"], "os": config["Os"]}
 lock_path.write_text(json.dumps(lock, indent=2) + "\n")
 print(f"Sysroot ready: {sysroot}", flush=True)

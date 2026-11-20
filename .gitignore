@@ -2,3 +2,8 @@
 /artifacts/
 .DS_Store
 CMakeUserPresets.json
+__pycache__/
+*.py[cod]
+/sources/waynergy/
+/sources/wayland-scanner/
+/sources/mupen64plus-next/

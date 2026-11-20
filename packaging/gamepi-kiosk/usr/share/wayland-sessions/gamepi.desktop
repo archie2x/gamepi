@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=Gamepi
+Comment=ES-DE gaming kiosk
+Exec=/usr/bin/gamepi-kiosk-session
+Type=Application

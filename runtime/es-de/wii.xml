@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<systemList>
+  <system>
+    <name>wii</name>
+    <fullname>Nintendo Wii</fullname>
+    <path>%ROMPATH%/wii</path>
+    <extension>.ciso .CISO .dol .DOL .elf .ELF .gcm .GCM .gcz .GCZ .iso .ISO .m3u .M3U .rvz .RVZ .tgc .TGC .wad .WAD .wbfs .WBFS .wia .WIA</extension>
+    <command label="Dolphin (RetroArch)">/home/roger/.local/bin/gamepi-retroarch -v --log-file /home/roger/.cache/gamepi/retroarch/dolphin.log -L /home/roger/.local/share/gamepi/retroarch/cores/dolphin_libretro.so %ROM%</command>
+    <command label="Dolphin AppImage (Standalone)">/home/roger/Applications/Dolphin_Emulator-2609a-anylinux-aarch64.AppImage -b -e %ROM%</command>
+    <platform>wii</platform>
+    <theme>wii</theme>
+  </system>
+</systemList>

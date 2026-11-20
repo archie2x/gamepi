@@ -1,0 +1,29 @@
+# Shared stereo output on the AMD GPU's connected HDMI port.
+# Logical hdmi:CARD=HDMI,DEV=3 corresponds to hardware PCM device 9.
+pcm.gamepi_hdmi_mix {
+  type dmix
+  ipc_key 476510
+  ipc_key_add_uid true
+  slave {
+    pcm "hw:CARD=HDMI,DEV=9"
+    format S32_LE
+    rate 48000
+    channels 2
+    period_size 1024
+    buffer_size 4096
+  }
+  bindings {
+    0 0
+    1 1
+  }
+}
+
+pcm.!default {
+  type plug
+  slave.pcm "gamepi_hdmi_mix"
+}
+
+ctl.!default {
+  type hw
+  card HDMI
+}

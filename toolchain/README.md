@@ -1,8 +1,9 @@
 # Native macOS to Raspberry Pi ARM64
 
 This first setup builds two small Linux programs using native Homebrew Clang,
-LLD, CMake, Ninja, and pkg-config. Docker supplies files only: no container or
-VM runs during extraction or compilation.
+LLD, CMake, Ninja, and pkg-config. Local Docker pulls the image and exports a
+stopped container to supply the sysroot. The container is never started;
+compilation and linking run natively on macOS.
 
 The sysroot lives on the existing case-sensitive filesystem mounted at `~/src`.
 Its source is `ghcr.io/archie2x/raspios-build-box:trixie-arm64`, built by the
@@ -11,8 +12,9 @@ the exact ARM64 image digest used. The image's Linux compilers are not executed.
 
 ## Build
 
-Dependencies on the Mac: `llvm`, `lld`, `cmake`, `ninja`, `pkgconf`, `crane`,
-and Python 3. The Homebrew paths in the toolchain file target Apple Silicon.
+Dependencies on the Mac: `llvm`, `lld`, `cmake`, `ninja`, `pkgconf`, Python 3,
+and a running local Docker engine. The Homebrew paths in the toolchain file
+target Apple Silicon.
 
 From this directory:
 

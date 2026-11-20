@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+
+exec "$HOME/Applications/RetroArch-1.22.2-62eeee40e-aarch64" --config "$HOME/.config/gamepi/retroarch/retroarch.cfg" "$@"
