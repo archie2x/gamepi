@@ -51,9 +51,11 @@ frame, Escape exits. The upstream Nintendo Switch Pro Controller udev profile
 provides a Home-button menu binding. Controller gameplay and exit/return still
 need verification.
 
-The ALSA default uses `gamepi_hdmi_mix` on the connected AMD HDMI port, allowing
-ES-DE and the emulator to share playback. Install `runtime/asoundrc` as the
-gaming user's `~/.asoundrc`. RetroArch's audio synchronization is enabled.
+RetroArch uses `audio_driver = "pulse"` to connect to the kiosk user's
+PipeWire server through its PulseAudio interface. ES-DE and RetroArch share
+the selected output. RetroArch's audio synchronization is enabled. The direct
+ALSA/dmix configuration in `runtime/asoundrc` must not be used by RetroArch
+while PipeWire owns HDMI.
 
 ## Mupen64Plus-Next
 

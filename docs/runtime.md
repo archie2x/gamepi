@@ -68,7 +68,11 @@ to `~/.local/share/gamepi/launchers/Bluetooth.desktop`; launch it through ES-DE'
 Applications system. Pairing is managed globally by BlueZ. The GUI currently
 expects keyboard/mouse input; gamepad navigation has not been implemented.
 
-The ALSA default in `~/.asoundrc` uses the `gamepi_hdmi_mix` dmix device on
+RetroArch uses `audio_driver = "pulse"`, connecting through PipeWire's
+PulseAudio interface. This shares the HDMI output with ES-DE. The default
+PipeWire sink is the connected AMD HDMI output.
+
+The separate ALSA configuration in `~/.asoundrc` uses the `gamepi_hdmi_mix` dmix device on
 `hw:CARD=HDMI,DEV=9` (the connected RX 460 HDMI output). It mixes stereo S32_LE
 at 48 kHz; a plug layer converts application formats and rates. ES-DE and
 emulators can share the output. The configuration is in `runtime/asoundrc`.
