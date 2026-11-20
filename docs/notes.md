@@ -251,3 +251,13 @@ Shared defaults live under /etc/gamepi/es-de; existing Roger settings retained.
 
 Reboot verification passed: greetd active, target enabled, Roger's PAM seat0
 session active, ES-DE PID 987 started automatically with /run/user/1000.
+
+## Kiosk audio correction, 2026-11-20
+
+The PAM login starts the existing PipeWire/WirePlumber user services. PipeWire
+owns the connected AMD HDMI PCM, so RetroArch's direct ALSA/dmix driver failed
+with Device or resource busy. Changed the active Gamepi RetroArch config and
+runtime template to audio_driver=pulse. A short Dolphin/Batman run initialized
+PulseAudio successfully and exposed active stereo RetroArch channels routed
+to PHL 346E2C alongside ES-DE. Default sink unmuted, volume 0.40. No additional
+packages were installed. Remote-input work is deferred at Roger's request.
