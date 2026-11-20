@@ -55,7 +55,7 @@ working user state. No saves remain alongside ROMs.
 
 ES-DE runtime data is in `~/ES-DE`. Its custom launch definitions are
 `~/ES-DE/custom_systems/es_systems.xml`, currently selecting the Dolphin
-RetroArch core for GameCube/Wii, ARMSX2 for PS2, and the patched Flycast
+RetroArch core for GameCube/Wii, ARMSX2 for PS2, and the upstream Flycast dev
 RetroArch core for Dreamcast, and Mupen64Plus-Next for N64. Standalone Dolphin and Flycast remain alternative
 launchers. Custom systems use the standard lowercase platform directories.
 Other systems retain upstream defaults. The XML fragments in `runtime/es-de`
@@ -316,3 +316,12 @@ package configuration; roger is the initial editor. The package creates only
 the group, not a gamepi user. Installation configures existing library access;
 upgrades preserve existing content permissions. ROMs and BIOS remain at their
 current paths and are never included in the package payload.
+
+## Flycast upstream dev
+
+ES-DE uses unmodified upstream dev at
+`de3eab3e832071ef110a15891144bd4969970057`. The checkout is in sources/flycast;
+outputs are under build/flycast-dev. The Pi's installed core SHA256 is
+`273518846bb40c9b0259cdb5fbe3ed313731c8e8335c0cf2267051456ef954e7`.
+The runtime page-protection check passes on the 16 KB kernel. Roger confirmed
+Sonic Adventure gameplay; that tested binary is the default installed core.
