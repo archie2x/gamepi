@@ -1,0 +1,32 @@
+diff --git a/src/text/text-loader.c b/src/text/text-loader.c
+index d4429f1..d246712 100644
+--- a/src/text/text-loader.c
++++ b/src/text/text-loader.c
+@@ -211,10 +211,12 @@ static void alloc_languages(char *exePath, char *gameDir) {
+     snprintf(languagesDir, FILENAME_MAX, "%s/%s/texts/", exeDir, gameDir);
+ 
+     // Scan directory for JSON files
+-    DIR *dir = opendir(languagesDir);
+-    if (dir) {
+-        struct dirent *de;
+-        while ((de = readdir(dir)) != NULL) {
++    // Sorted, so that language indices do not depend on the filesystem.
++    struct dirent **entries = NULL;
++    int numEntries = scandir(languagesDir, &entries, NULL, alphasort);
++    if (numEntries >= 0) {
++        for (int e = 0; e < numEntries; e++) {
++            struct dirent *de = entries[e];
+             const char *extension = get_filename_ext(de->d_name);
+             if (strcmp(extension, "json") == 0) {
+ 
+@@ -231,8 +233,9 @@ static void alloc_languages(char *exePath, char *gameDir) {
+                     exit(1);
+                 }
+             }
++            free(de);
+         }
+-        closedir(dir);
++        free(entries);
+     }
+ 
+     // Abort if no file loaded

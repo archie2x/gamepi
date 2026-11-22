@@ -384,3 +384,158 @@ IP, checked against gamepi.local's known host key, works. No network settings
 were changed. No kiosk, frontend, emulator or ROM setup has been installed on
 this card. GPU/kernel packaging source and the tested installation recipe are
 in this repository; binaries have not been published to an APT repository.
+
+## Render96ex cross-build, 2026-11-22
+
+Roger asked for the Render96 Super Mario 64 PC port alongside the emulators.
+Added scripts/build-render96ex.py. It pins Render96/Render96ex branch tester
+at 61480c4e6e5c7e7bed40341c0aa76b75d405c3c7. Branch master was tried first and
+rejected: it has no DynOS, so it cannot load the Render96 model pack.
+
+Upstream uses a GNU Makefile, not CMake, so the script generates
+aarch64-linux-gnu-{gcc,g++,cpp,as,objcopy,objdump} and sdl2-config wrappers
+around Homebrew Clang/LLD, llvm-objcopy and sysroot pkg-config under
+build/render96ex/cross-bin, and passes CROSS/CC/CXX to gmake. Findings:
+
+- macOS make 3.81 lacks the != operator; the wrappers put gmake first as make.
+- HOST_OS=Linux is passed, otherwise the Makefile selects its macOS target.
+- Upstream forwards the game's CC to its asset tools. The script builds the
+  tools first with the Mac compiler, serially (tabledesign races the
+  audiofile library), with -D_DARWIN_C_SOURCE for vsnprintf.
+- TARGET_RPI=1 was not used: it selects GLES2 and derives -march from the
+  build machine. The build links desktop libGL for the AMD card.
+- Clang rejects 28 texture-coordinate literals wider than 64 bits in
+  actors/luigi_cap/model.inc.c. GCC warns and truncates; all become 0 as s16.
+  patches/render96ex/luigi-cap-texcoord-literals.patch writes those zeros.
+- Clang 16+/GCC 14 errors for incompatible pointer types (u64* against
+  uint64_t*) are demoted to warnings in the C wrapper.
+- The one assembly sequence (00_sound_player.s) assembles with Clang's
+  integrated assembler through the as wrapper.
+
+Assets were extracted from Roger's US ROM (SHA-1 9bef1128..., matching
+sm64.us.sha1), copied to the ignored checkout as baserom.us.z64. No sysroot
+changes and no Python packages were needed; SDL2 and libGL were already there.
+
+Result: sources/render96ex/build/us_pc/sm64.us.f3dex2e, ELF aarch64, 64 KB
+segment alignment, SHA256
+7d0e75b7d0288e009cf96cda0d3b761f8f6567cf2ed05b8bd272465bccfa2120, needing
+libSDL2-2.0, libGL, libstdc++, libgcc_s, libm and libc. res/based.zip holds
+1634 files. In the pinned Docker image (4 KB pages, repository directory
+mounted read-only, no network) all libraries resolved and the program ran
+through SDL offscreen window and OpenGL setup, then stopped at "Failed to
+initialize device for music": the container has no audio device. Log:
+build/render96ex/build.log.
+
+The build output contains ROM-derived assets and must stay out of Git and out
+of any published package.
+
+### Installed on the NVMe prototype
+
+Roger confirmed the NVMe installation was booted and asked for installation,
+a launcher and both packs. Verified root /dev/sda2, kernel 6.18.48-v8-16k+,
+16 KB pages and an idle ES-DE before changing anything. Direct SSH used the
+existing gamepi alias with HostKeyAlgorithms=ssh-ed25519 per invocation; no
+SSH configuration was edited. No packages were installed and sudo was not used.
+
+Added scripts/install-render96ex.py and runtime/render96ex/. The script stages
+build/render96ex/stage/render96ex from the build output, the model pack
+Render96_DynOs_v3.25.7z (Render96/ModelPack 3.25, four pack directories into
+dynos/packs) and Render96.HD.Texture.Pack.1.3.26.7.7.7z (overlaid on res/gfx;
+1345 of the 1629 base texture names are replaced). Both archives are pinned by
+SHA-256 and cached under build/downloads/render96ex. With --host and
+--expected-root it checks the root device, refuses to update a running game
+and copies with rsync, without --delete.
+
+On the Pi: ~/.local/share/gamepi/render96ex (842 MB), the launcher
+~/.local/bin/gamepi-render96ex, and /srv/ROMs/ports/Super Mario 64
+(Render96).sh for ES-DE's bundled Ports system. es_systems.xml was not
+changed. DynOS leaves model packs disabled by default, so a first-run
+~/.local/share/sm64ex/DynOS.1.1.alpha.config.txt enabling the four packs was
+seeded; the script never overwrites an existing one.
+
+Two launches through the launcher from SSH, in the running Cage session, ran
+for 40 and 45 seconds until the test's SIGTERM and exited cleanly, saving
+sm64config.txt. The process opened the amdgpu render node, loaded Mesa's
+libGL through XWayland and libpulse, found all four packs and reported "Pro
+Controller has haptics support, rumble enabled". Log:
+~/.cache/gamepi/render96ex.log. The pack's extra non-texture PNGs produce
+harmless "unknown texture format" lines during precaching.
+
+Not verified: nobody looked at the picture or listened, so rendering, HD
+textures, whether the seeded pack keys take effect, sound, frame rate and
+button layout are unconfirmed. ES-DE was not restarted, because the session's
+restart behaviour on this installation was not established; Ports appears
+after a ROM-directory rescan or the next frontend start. vsync defaults to
+false and 60 fps to true in the generated configuration. Nothing is packaged.
+
+Roger reported the game came up in French. Cause: text-loader.c numbers
+languages in readdir order and the default configuration selects index 0; on
+the Pi's ext4 the first file was FR_fr.json. patches/render96ex/
+sorted-language-files.patch loads the files with scandir/alphasort, making
+index 0 AM_us (English) on any filesystem. Rebuilt; executable SHA256
+efca75714492fda5af9eb2657028d0e2bfec5ecdc612571b4746a552ec19e75c. This
+supersedes the hash above. The existing sm64config.txt keeps `language 0`.
+
+### Render96ex controls matched to the N64 core
+
+Roger asked for the same controls as the established Mupen64Plus-Next setup.
+An SDL probe on the Pi (ctypes, loading the game's own gamecontrollerdb.txt)
+showed the Pro 2 arrives through evdev/hid-nintendo with GUID
+0500d71f7e0500000920000001800000 and positional buttons: SDL a is raw b0
+(printed B), b is b1 (printed A), x is b3 (printed Y), y is b2 (printed X).
+The game's defaults therefore put N64 A on printed B and N64 B on printed Y,
+and bound Z to the left-stick click and both R and R2 to N64 R.
+
+runtime/render96ex/controls.txt now binds printed A to N64 A, printed B to
+B, L2 to Z, L/R to L/R, Start and the D-pad; the right stick already drives
+the C buttons. The installer merges only those keys, plus `language 0`, into
+sm64config.txt. patches/render96ex/mupen-style-controls.patch adds what the
+game cannot express in its configuration: holding R2 turns the face buttons
+into C buttons by position (X up, Y left, A right, B down) and suppresses
+A/B, and Star/Capture pressed twice within three seconds exits. Unlike
+RetroArch there is no on-screen prompt after the first press. The launcher
+exports SDL_GAMECONTROLLERCONFIG so Capture is available as misc1; the probe
+confirmed this mapping takes precedence over the game's database. Heart/Home
+has no function here. Executable SHA256
+cfdbaa2ba5476f5ecfec24217c73f2064bd647590b941a6727e99d82389b6092, installed
+with the language fix after Roger exited the game. Roger had changed the
+language index in-game to 4; it was reset to 0, which is now English.
+Not yet played with the new bindings.
+
+### Render96ex slow, invisible start and double launches
+
+Roger reported that launching took a long time with ES-DE still visible, and
+that launching again produced two instances. Cause: `precache true` (the
+game's default) loads every texture before the first frame, and until the
+first buffer swap the window has no content, so Cage keeps showing ES-DE.
+
+patches/render96ex/precache-loading-screen.patch counts the textures, then
+draws a black screen with a progress bar (scissored clears only) every 16
+textures during precaching. The launcher now runs the game under
+`flock --nonblock` on $XDG_RUNTIME_DIR/gamepi-render96ex.lock and opens the
+log only after taking the lock. Executable SHA256
+bd1a53b2b98f1a930ac696a906d76eefaffaa2b16d11d5d29ae38b9f26cff124, installed
+after Roger exited the game.
+
+Tested from SSH in the Cage session: a second launcher invocation one second
+after the first exited with status 1 and one instance remained. Precaching
+began about 3 s after launch; file reads reached 390 MB at about 18 s and then
+stopped growing, so loading takes roughly 15-20 s with the HD pack. This is an
+I/O-based estimate: stdout is block-buffered into the log, the Pi has no bc,
+and an earlier attempt lost its timestamps. That run ended at 44 s with a
+clean exit and saved configuration, which was not sent by the test; Roger was
+probably at the controller. Nobody has confirmed the progress bar's
+appearance. Precaching was left enabled; `precache false` in sm64config.txt
+(Options, also in-game) trades the wait for first-use hitches.
+
+Roger then saw the intro (Mario's face) run fast-forward after loading. This
+was a defect in the loading-screen patch, not a collision with a test launch
+as first suggested to him: upstream's frame limiter advances its clock by one
+frame per buffer swap, and the progress bar swapped only about 140 times
+during a 15 s load, so the game ran unthrottled afterwards to "catch up".
+The patch now resynchronizes the limiter whenever it is more than 250 ms
+behind. Executable SHA256
+c6b6344dc565c4a849202d886c778501feb1a7775f9ab9c2060c3a7d4e5dcc1d, installed
+while no game was running; no test launch was made. Awaiting Roger's check.
+The progress bar shows textures loaded out of the counted total; it is not a
+timed animation.

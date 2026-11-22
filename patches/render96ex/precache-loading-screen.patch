@@ -1,0 +1,110 @@
+diff --git a/src/pc/gfx/gfx_opengl.c b/src/pc/gfx/gfx_opengl.c
+index 6da4004..2ba8830 100644
+--- a/src/pc/gfx/gfx_opengl.c
++++ b/src/pc/gfx/gfx_opengl.c
+@@ -652,6 +652,27 @@ static void gfx_opengl_init(void) {
+ static void gfx_opengl_on_resize(void) {
+ }
+ 
++// Gamepi: uses only scissored clears, so it needs no shader or texture state.
++void gfx_opengl_draw_loading(float fraction, uint32_t width, uint32_t height) {
++    const int bar_w = width / 3, bar_h = height / 90 + 2;
++    const int bar_x = (width - bar_w) / 2, bar_y = height / 6;
++    if (fraction < 0.0f) fraction = 0.0f;
++    if (fraction > 1.0f) fraction = 1.0f;
++    glViewport(0, 0, width, height);
++    glDisable(GL_SCISSOR_TEST);
++    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
++    glClear(GL_COLOR_BUFFER_BIT);
++    glEnable(GL_SCISSOR_TEST);
++    glScissor(bar_x, bar_y, bar_w, bar_h);
++    glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
++    glClear(GL_COLOR_BUFFER_BIT);
++    glScissor(bar_x, bar_y, (int)(bar_w * fraction), bar_h);
++    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
++    glClear(GL_COLOR_BUFFER_BIT);
++    glDisable(GL_SCISSOR_TEST);
++    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
++}
++
+ static void gfx_opengl_start_frame(void) {
+     frame_count++;
+ 
+diff --git a/src/pc/gfx/gfx_opengl.h b/src/pc/gfx/gfx_opengl.h
+index 95be897..c024b1e 100644
+--- a/src/pc/gfx/gfx_opengl.h
++++ b/src/pc/gfx/gfx_opengl.h
+@@ -5,4 +5,7 @@
+ 
+ extern struct GfxRenderingAPI gfx_opengl_api;
+ 
++// Gamepi: draws a black screen with a progress bar; the caller swaps buffers.
++void gfx_opengl_draw_loading(float fraction, uint32_t width, uint32_t height);
++
+ #endif
+diff --git a/src/pc/gfx/gfx_pc.c b/src/pc/gfx/gfx_pc.c
+index 18ebb7b..cacd939 100644
+--- a/src/pc/gfx/gfx_pc.c
++++ b/src/pc/gfx/gfx_pc.c
+@@ -536,9 +536,36 @@ static bool texname_to_texformat(const char *name, u8 *fmt, u8 *siz) {
+ }
+ 
+ // calls import_texture() on every texture in the res folder
++// Gamepi: precaching the HD texture pack takes long enough that the window
++// must show something; until the first buffer swap the launcher stays visible.
++#ifdef RAPI_GL
++#include "gfx_opengl.h"
++static uint32_t preload_total = 0;
++static uint32_t preload_done = 0;
++
++static bool count_texture(void *user, const char *path) {
++    (void)user;
++    (void)path;
++    preload_total++;
++    return true;
++}
++
++static void show_preload_progress(void) {
++    uint32_t width = 0, height = 0;
++    gfx_wapi->handle_events();
++    gfx_wapi->get_dimensions(&width, &height);
++    gfx_opengl_draw_loading(preload_total ? (float)preload_done / preload_total : 0.0f, width, height);
++    gfx_wapi->swap_buffers_begin();
++    gfx_wapi->swap_buffers_end();
++}
++#endif
++
+ // we can get the format and size from the texture files
+ // and then cache them using gfx_texture_cache_lookup
+ static bool preload_texture(void *user, const char *path) {
++#ifdef RAPI_GL
++    if (++preload_done % 16 == 0) show_preload_progress();
++#endif
+     // strip off the extension
+     char texname[SYS_MAX_PATH];
+     strncpy(texname, path, sizeof(texname));
+@@ -1953,6 +1980,10 @@ void gfx_init(struct GfxWindowManagerAPI *wapi, struct GfxRenderingAPI *rapi, co
+ }
+ 
+ void gfx_precache_textures(void) {
++#ifdef RAPI_GL
++    fs_walk(FS_TEXTUREDIR, count_texture, NULL, true);
++    show_preload_progress();
++#endif
+     // preload all textures
+     fs_walk(FS_TEXTUREDIR, preload_texture, NULL, true);
+ }
+diff --git a/src/pc/gfx/gfx_sdl2.c b/src/pc/gfx/gfx_sdl2.c
+index aa0ba6a..94c2faa 100644
+--- a/src/pc/gfx/gfx_sdl2.c
++++ b/src/pc/gfx/gfx_sdl2.c
+@@ -360,6 +360,9 @@ static inline void sync_framerate_with_timer(void) {
+     static Uint32 last_time = 0;
+     // get base timestamp on the first frame (might be different from 0)
+     if (last_time == 0) last_time = SDL_GetTicks();
++    // Gamepi: after a stall such as texture precaching, where buffer swaps are
++    // far apart, resynchronize instead of running frames unthrottled to catch up.
++    if (SDL_GetTicks() - last_time > 250) last_time = SDL_GetTicks() - frame_time;
+     const int elapsed = SDL_GetTicks() - last_time;
+     if (elapsed < frame_time)
+         SDL_Delay(frame_time - elapsed);

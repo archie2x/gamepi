@@ -1,0 +1,14 @@
+#!/bin/sh
+# Launch the natively built Render96ex in the current Cage session.
+# The game finds res/ in the working directory and dynos/ beside itself.
+cd "$HOME/.local/share/gamepi/render96ex" || exit 1
+mkdir -p "$HOME/.cache/gamepi"
+# 8BitDo Pro 2 in Switch mode through the kernel's hid-nintendo driver. Buttons
+# are positional (SDL a is the bottom button, printed B); misc1 is Star/Capture,
+# which the game's own controller database leaves unmapped.
+export SDL_GAMECONTROLLERCONFIG="050000007e0500000920000001800000,Nintendo Switch Pro Controller,a:b0,b:b1,x:b3,y:b2,back:b9,start:b10,guide:b11,misc1:b4,leftshoulder:b5,rightshoulder:b6,lefttrigger:b7,righttrigger:b8,leftstick:b12,rightstick:b13,leftx:a0,lefty:a1,rightx:a2,righty:a3,dpup:h0.1,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,platform:Linux,"
+# One instance only: a second launch during the slow start exits at once.
+# The log is opened only after the lock is held, so a refused launch does not
+# truncate the running game's log.
+exec flock --nonblock "${XDG_RUNTIME_DIR:-/tmp}/gamepi-render96ex.lock" sh -c \
+  'exec ./sm64.us.f3dex2e --fullscreen "$@" >"$HOME/.cache/gamepi/render96ex.log" 2>&1' sh "$@"

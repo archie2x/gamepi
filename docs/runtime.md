@@ -408,3 +408,43 @@ outputs are under build/flycast-dev. The Pi's installed core SHA256 is
 `273518846bb40c9b0259cdb5fbe3ed313731c8e8335c0cf2267051456ef954e7`.
 The runtime page-protection check passes on the 16 KB kernel. Roger confirmed
 Sonic Adventure gameplay; that tested binary is the default installed core.
+
+## Render96ex (native Super Mario 64 port)
+
+`python3 scripts/build-render96ex.py --rom PATH/TO/US.z64` cross-builds
+Render96ex branch `tester` at `61480c4e6e5c7e7bed40341c0aa76b75d405c3c7` with
+native Homebrew Clang/LLD and GNU Make 4 (`brew install make`). The ROM is
+needed on the first run only, and must be the US release. It is a native
+program using SDL2 and desktop OpenGL, not an emulator core.
+
+The runtime directory is `sources/render96ex/build/us_pc`: the executable
+`sm64.us.f3dex2e`, `res/` and `dynos/` must stay together. Optional Render96
+packs go in `dynos/packs` (models) and `res/gfx` (textures). It reads `res`
+relative to the executable and keeps saves and `sm64config.txt` in SDL's
+preference path, `~/.local/share/sm64ex`; `--savepath` overrides that.
+
+`python3 scripts/install-render96ex.py --host gamepi --expected-root /dev/sda2
+--ssh-option HostKeyAlgorithms=ssh-ed25519` adds the pinned model pack 3.25
+and HD texture pack 1.3.26.7.7 and installs to the NVMe prototype:
+
+```text
+~/.local/share/gamepi/render96ex/            executable, res/, dynos/
+~/.local/bin/gamepi-render96ex               launcher; log in ~/.cache/gamepi/render96ex.log
+/srv/ROMs/ports/Super Mario 64 (Render96).sh ES-DE Ports entry
+~/.local/share/sm64ex/                       saves, sm64config.txt, DynOS configuration
+```
+
+It appears in ES-DE's bundled Ports system; no custom system definition is
+needed. Model packs are toggled in the game's Options, DynOS, Model Packs
+menu; the installer seeds them as enabled on first installation only. It
+starts on the 16 KB kernel with the AMD GPU and detects the Pro Controller.
+Controls follow the N64 core's table in `runtime/retroarch/README.md`:
+printed A/B are N64 A/B, L2 is Z, L/R are L/R, the right stick or R2 plus a
+face button gives the C buttons, and Star pressed twice within three seconds
+exits. Bindings are in `runtime/render96ex/controls.txt`; the R2 shift and
+Star exit come from `patches/render96ex/mupen-style-controls.patch`.
+Start-up precaches all textures, roughly 15-20 seconds with the HD pack, behind
+a progress bar. The launcher allows one instance; a second launch exits.
+The new controls and loading screen have not been checked by a person; see the
+2026-11-22 entry in `notes.md`. The installation contains ROM-derived data
+and is not part of any package.

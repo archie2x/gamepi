@@ -1,0 +1,43 @@
+diff --git a/src/pc/controller/controller_sdl.c b/src/pc/controller/controller_sdl.c
+index ca67955..68fdb8c 100644
+--- a/src/pc/controller/controller_sdl.c
++++ b/src/pc/controller/controller_sdl.c
+@@ -21,6 +21,7 @@
+ #include "../configfile.h"
+ #include "../platform.h"
+ #include "../fs/fs.h"
++#include "../pc_main.h"
+ 
+ #define AVOID_UTYPES
+ #include "nx/m_controller.h"
+@@ -245,6 +246,30 @@ static void controller_sdl_read(OSContPad *pad) {
+         if (joy_buttons[joy_binds[i][0]])
+             buttons_down |= joy_binds[i][1];
+ 
++    // Gamepi: match the Mupen64Plus-Next standard mapping. While the right
++    // trigger is held, the face buttons are C buttons by position and do
++    // not act as A/B.
++    if (joy_buttons[VK_RTRIGGER - VK_BASE_SDL_GAMEPAD]) {
++        buttons_down &= ~(A_BUTTON | B_BUTTON);
++        if (joy_buttons[SDL_CONTROLLER_BUTTON_Y]) buttons_down |= U_CBUTTONS; // north
++        if (joy_buttons[SDL_CONTROLLER_BUTTON_X]) buttons_down |= L_CBUTTONS; // west
++        if (joy_buttons[SDL_CONTROLLER_BUTTON_B]) buttons_down |= R_CBUTTONS; // east
++        if (joy_buttons[SDL_CONTROLLER_BUTTON_A]) buttons_down |= D_CBUTTONS; // south
++    }
++
++    // Gamepi: the Capture button exits when pressed twice within three
++    // seconds, like RetroArch's confirmed quit.
++    static bool capture_was_down = false;
++    static u32 capture_pressed_at = 0;
++    const bool capture_down = joy_buttons[SDL_CONTROLLER_BUTTON_MISC1];
++    if (capture_down && !capture_was_down) {
++        const u32 now = SDL_GetTicks();
++        if (capture_pressed_at != 0 && now - capture_pressed_at < 3000)
++            game_exit();
++        capture_pressed_at = now ? now : 1;
++    }
++    capture_was_down = capture_down;
++
+     pad->button |= buttons_down;
+ 
+     const u32 xstick = buttons_down & STICK_XMASK;
