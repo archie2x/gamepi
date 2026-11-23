@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+if [ "$1" = configure ] && [ -d /run/udev ]; then
+    modprobe uinput
+    udevadm control --reload-rules
+    udevadm trigger --action=add --subsystem-match=misc --sysname-match=uinput
+    udevadm settle
+fi

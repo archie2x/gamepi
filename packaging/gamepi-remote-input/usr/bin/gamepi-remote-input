@@ -1,0 +1,53 @@
+#!/usr/bin/python3
+"""Run the input receiver for the lifetime of its SSH input stream."""
+import fcntl
+import os
+from pathlib import Path
+import select
+import signal
+import subprocess
+import sys
+
+
+def supervise(command, stream=sys.stdin):
+    receiver = subprocess.Popen(command, stdin=subprocess.DEVNULL)
+    try:
+        while receiver.poll() is None:
+            readable, _, _ = select.select([stream], [], [], 0.5)
+            if readable and not os.read(stream.fileno(), 1024):
+                return 0
+        return receiver.returncode
+    finally:
+        if receiver.poll() is None:
+            receiver.terminate()
+            try:
+                receiver.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                receiver.kill()
+                receiver.wait()
+
+
+def main():
+    runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+    display = os.environ.get("WAYLAND_DISPLAY", "wayland-0")
+    if not (runtime / display).is_socket():
+        sys.exit("The Gamepi kiosk is not running for this user")
+    if not os.access("/dev/uinput", os.W_OK):
+        sys.exit("No /dev/uinput access; the gaming user must belong to group input")
+    with (runtime / "gamepi-remote-input.lock").open("w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            sys.exit("A Gamepi remote-input connection is already running")
+        os.environ.update(XDG_RUNTIME_DIR=str(runtime), WAYLAND_DISPLAY=display,
+                          WAYNERGY_CONF_PATH="/etc/gamepi/remote-input")
+        for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            signal.signal(sig, lambda *_: sys.exit(0))
+        return supervise(["/usr/lib/gamepi-remote-input/waynergy", "-b", "uinput",
+                          "-c", "127.0.0.1", "-p", "24805", "-N", "gamepi",
+                          "-E", "-n", "-L", "info", "--fatal-ebad", "--fatal-ebsy",
+                          "--fatal-none", "--fatal-timeout"])
+
+
+if __name__ == "__main__":
+    sys.exit(main())

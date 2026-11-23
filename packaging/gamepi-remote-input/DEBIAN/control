@@ -1,0 +1,11 @@
+Package: gamepi-remote-input
+Version: 0.1.0
+Section: games
+Priority: optional
+Architecture: arm64
+Maintainer: Gamepi <archie2x@users.noreply.github.com>
+Depends: gamepi-kiosk (>= 0.1.0), python3, kmod, udev, libtls28t64, libwayland-client0, libxkbcommon0, libc6
+Description: Gamepi SSH keyboard and mouse receiver
+ Supplies Waynergy, its Mac keyboard mapping and persistent uinput access.
+ Receives input through an SSH tunnel started from the Mac; no network
+ listener or receiver service is enabled at boot.
