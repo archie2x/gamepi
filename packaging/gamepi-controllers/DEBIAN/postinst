@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+if [ "$1" = configure ] && [ -d /run/systemd/system ]; then
+    systemctl daemon-reload
+    deb-systemd-helper enable gamepi-power-button.service >/dev/null
+    systemctl restart gamepi-power-button.service || true
+fi

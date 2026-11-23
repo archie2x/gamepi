@@ -1,0 +1,298 @@
+#!/usr/bin/python3
+"""Reconnect or re-pair a Bluetooth game controller.
+
+An 8BitDo pad keeps one host pairing per mode. After it has been used with
+another machine its pairing with this one is stale: BlueZ still lists the pad
+as paired, but the pad no longer holds the matching key, so it never connects
+again until the old pairing is removed and a new one is made.
+
+What this does, for a limited time window:
+  1. Asks every known controller that is not connected to connect.
+  2. Scans. A controller that answers the scan is in pairing mode, which means
+     it wants a new pairing: its stale pairing is removed, it is paired,
+     trusted and connected, and its nickname is restored.
+  3. Stops as soon as one more controller is connected than at the start.
+
+A controller that is merely switched on is not discoverable and is never
+touched by step 2, so working pairings are left alone.
+
+With more than one Bluetooth adapter, a USB adapter is preferred over the
+Pi's built-in radio, whose antenna suffers interference here. Pairings made
+for the same controller on any other adapter are removed, because the
+controller only ever calls the adapter it paired with last.
+
+Usage: gamepi-controller-pair [--window SECONDS] [--adapter ADDRESS] [--status]
+Exit status: 0 a controller connected, 1 none did, 2 Bluetooth unavailable.
+"""
+import argparse
+import os
+import sys
+import time
+
+from gi.repository import Gio, GLib
+
+BLUEZ = "org.bluez"
+DEVICE = "org.bluez.Device1"
+ADAPTER = "org.bluez.Adapter1"
+PROPERTIES = "org.freedesktop.DBus.Properties"
+AGENT_PATH = "/org/gamepi/agent"
+AGENT_XML = """<node><interface name="org.bluez.Agent1">
+<method name="Release"/>
+<method name="RequestPinCode"><arg type="o" direction="in"/><arg type="s" direction="out"/></method>
+<method name="RequestPasskey"><arg type="o" direction="in"/><arg type="u" direction="out"/></method>
+<method name="DisplayPinCode"><arg type="o" direction="in"/><arg type="s" direction="in"/></method>
+<method name="DisplayPasskey"><arg type="o" direction="in"/><arg type="u" direction="in"/><arg type="q" direction="in"/></method>
+<method name="RequestConfirmation"><arg type="o" direction="in"/><arg type="u" direction="in"/></method>
+<method name="RequestAuthorization"><arg type="o" direction="in"/></method>
+<method name="AuthorizeService"><arg type="o" direction="in"/><arg type="s" direction="in"/></method>
+<method name="Cancel"/>
+</interface></node>"""
+
+
+def say(message):
+    print(time.strftime("%H:%M:%S"), message, flush=True)
+
+
+class Pairing:
+    def __init__(self, window, wanted=None):
+        self.window = window
+        self.wanted = wanted
+        self.bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        self.loop = GLib.MainLoop()
+        self.busy = set()        # addresses being removed or paired
+        self.aliases = {}        # address -> nickname to restore
+        self.result = 1
+        self.adapter = None
+
+    def call(self, path, interface, method, arguments=None, timeout=10):
+        return self.bus.call_sync(BLUEZ, path, interface, method, arguments, None,
+                                  Gio.DBusCallFlags.NONE, timeout * 1000, None)
+
+    def objects(self):
+        reply = self.call("/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects")
+        return reply.unpack()[0]
+
+    def adapters(self):
+        """[(object path, address, alias, is_usb)], USB adapters first."""
+        found = []
+        for path, interfaces in self.objects().items():
+            adapter = interfaces.get(ADAPTER)
+            if adapter:
+                bus = os.path.realpath(f"/sys/class/bluetooth/{path.rsplit('/', 1)[1]}/device")
+                found.append((path, adapter["Address"], adapter.get("Alias", ""), "/usb" in bus))
+        return sorted(found, key=lambda entry: (not entry[3], entry[0]))
+
+    def choose_adapter(self):
+        adapters = self.adapters()
+        if self.wanted:
+            adapters = [entry for entry in adapters if entry[1].lower() == self.wanted.lower()]
+        return adapters[0] if adapters else None
+
+    def controllers(self, everywhere=False):
+        """address -> (object path, properties) for the chosen adapter's game controllers.
+
+        With everywhere=True: a list of (path, properties) across all adapters.
+        """
+        found = [] if everywhere else {}
+        for path, interfaces in self.objects().items():
+            device = interfaces.get(DEVICE)
+            if not device or not self.is_controller(device):
+                continue
+            if everywhere:
+                found.append((path, device))
+            elif self.adapter and path.startswith(self.adapter + "/"):
+                found[device["Address"]] = (path, device)
+        return found
+
+    @staticmethod
+    def is_controller(device):
+        if device.get("Icon") == "input-gaming":
+            return True
+        # Major class 5 (peripheral), minor gamepad or joystick.
+        device_class = device.get("Class", 0)
+        return (device_class >> 8) & 0x1F == 5 and (device_class >> 2) & 0x0F in (1, 2)
+
+    def set_property(self, path, name, value):
+        self.call(path, PROPERTIES, "Set", GLib.Variant("(ssv)", (DEVICE, name, value)))
+
+    def connected(self):
+        return {address for address, (_, device) in self.controllers().items() if device.get("Connected")}
+
+    def status(self):
+        chosen = self.choose_adapter()
+        for path, address, alias, is_usb in self.adapters():
+            kind = "USB" if is_usb else "built-in"
+            mark = "  <- used for pairing" if chosen and path == chosen[0] else ""
+            say(f"Adapter {address} ({kind}, named {alias!r}){mark}")
+            mine = [(p, d) for p, d in self.controllers(everywhere=True) if p.startswith(path + "/")]
+            if not mine:
+                say("    no game controllers")
+            for _, device in sorted(mine, key=lambda entry: entry[1].get("Alias", "")):
+                state = "connected" if device.get("Connected") else "not connected"
+                paired = "paired" if device.get("Paired") else "not paired"
+                say(f"    {device.get('Alias', '?'):<16} {device['Address']}  {paired}, {state}")
+
+    # --- pairing agent: these pads pair without a code -------------------
+    def register_agent(self):
+        node = Gio.DBusNodeInfo.new_for_xml(AGENT_XML)
+
+        def handle(_bus, _sender, _path, _interface, method, _parameters, invocation):
+            if method == "RequestPinCode":
+                invocation.return_value(GLib.Variant("(s)", ("0000",)))
+            elif method == "RequestPasskey":
+                invocation.return_value(GLib.Variant("(u)", (0,)))
+            else:
+                invocation.return_value(None)
+
+        self.bus.register_object(AGENT_PATH, node.interfaces[0], handle, None, None)
+        self.call("/org/bluez", "org.bluez.AgentManager1", "RegisterAgent",
+                  GLib.Variant("(os)", (AGENT_PATH, "NoInputNoOutput")))
+
+    # --- the sequence -----------------------------------------------------
+    def run(self):
+        chosen = self.choose_adapter()
+        if not chosen:
+            say("No Bluetooth adapter." if not self.wanted else f"No Bluetooth adapter {self.wanted}.")
+            return 2
+        self.adapter = chosen[0]
+        say(f"Using adapter {chosen[1]} ({'USB' if chosen[3] else 'built-in'}).")
+        # Nicknames survive a move from another adapter.
+        for _, device in self.controllers(everywhere=True):
+            if device.get("Alias") and device.get("Alias") != device.get("Name"):
+                self.aliases.setdefault(device["Address"], device["Alias"])
+        self.call(self.adapter, PROPERTIES, "Set", GLib.Variant("(ssv)", (ADAPTER, "Powered", GLib.Variant("b", True))))
+        self.register_agent()
+        self.before = self.connected()
+
+        for address, (path, device) in self.controllers().items():
+            self.aliases.setdefault(address, device.get("Alias"))
+            if device.get("Paired") and not device.get("Connected"):
+                say(f"Asking {device.get('Alias')} to connect.")
+                self.bus.call(BLUEZ, path, DEVICE, "Connect", None, None, Gio.DBusCallFlags.NONE,
+                              8000, None, lambda *_: None)
+
+        self.call(self.adapter, ADAPTER, "SetDiscoveryFilter",
+                  GLib.Variant("(a{sv})", ({"Transport": GLib.Variant("s", "bredr")},)))
+        # BlueZ refuses a scan while it is itself calling a device, which it does
+        # for a few seconds every minute when a known pad is switched off.
+        for attempt in range(12):
+            try:
+                self.call(self.adapter, ADAPTER, "StartDiscovery")
+                break
+            except GLib.Error as error:
+                # A call that timed out is still queued in BlueZ; once it has
+                # been accepted, asking again reports InProgress: the scan is on.
+                if attempt and "InProgress" in error.message:
+                    break
+                if attempt == 11:
+                    raise
+                if attempt == 0:
+                    say(f"Scan not possible yet ({error.message.split(': ')[-1]}); retrying.")
+                time.sleep(1)
+        say(f"Scanning for {self.window} seconds. Put the controller in pairing mode if it does not connect.")
+        GLib.timeout_add(500, self.poll)
+        GLib.timeout_add_seconds(self.window, self.loop.quit)
+        try:
+            self.loop.run()
+        finally:
+            try:
+                self.call(self.adapter, ADAPTER, "StopDiscovery")
+            except GLib.Error:
+                pass
+        if self.result:
+            say("No controller connected.")
+        return self.result
+
+    def poll(self):
+        controllers = self.controllers()
+        # The link is up during pairing too: only a paired controller whose
+        # pairing sequence has finished counts as connected.
+        new = {a for a, (_, d) in controllers.items()
+               if d.get("Connected") and d.get("Paired") and a not in self.busy} - self.before
+        if new:
+            for address in new:
+                path, device = controllers[address]
+                alias = self.aliases.get(address)
+                if alias and device.get("Alias") != alias:
+                    self.set_property(path, "Alias", GLib.Variant("s", alias))
+                say(f"{alias or device.get('Alias')} is connected.")
+            self.result = 0
+            self.loop.quit()
+            return False
+        for address, (path, device) in controllers.items():
+            # RSSI is present only while the device answers this scan, that is,
+            # while it is discoverable: the controller is in pairing mode.
+            if address in self.busy or device.get("Connected") or "RSSI" not in device:
+                continue
+            self.busy.add(address)
+            if device.get("Paired"):
+                say(f"{device.get('Alias')} is in pairing mode; removing its stale pairing.")
+                self.call(self.adapter, ADAPTER, "RemoveDevice", GLib.Variant("(o)", (path,)))
+                # It reappears as a new, unpaired device on the next scan answer.
+                GLib.timeout_add(1500, lambda a=address: self.busy.discard(a) and False)
+            else:
+                self.pair(address, path, device)
+        return True
+
+    def forget_elsewhere(self, address):
+        """Remove this controller's pairing from every other adapter."""
+        for path, device in self.controllers(everywhere=True):
+            if device["Address"] == address and not path.startswith(self.adapter + "/"):
+                other = path.rsplit("/", 1)[0]
+                try:
+                    self.call(other, ADAPTER, "RemoveDevice", GLib.Variant("(o)", (path,)))
+                    say(f"Removed its old pairing on {other.rsplit('/', 1)[1]}.")
+                except GLib.Error as error:
+                    say(f"Could not remove the old pairing on {other}: {error.message}")
+
+    def pair(self, address, path, device):
+        name = self.aliases.get(address) or device.get("Alias") or address
+        say(f"Pairing {name}.")
+
+        def paired(bus, result):
+            try:
+                bus.call_finish(result)
+            except GLib.Error as error:
+                say(f"Pairing {name} failed: {error.message}")
+                self.busy.discard(address)
+                return
+            self.set_property(path, "Trusted", GLib.Variant("b", True))
+            self.forget_elsewhere(address)
+            if self.aliases.get(address):
+                self.set_property(path, "Alias", GLib.Variant("s", self.aliases[address]))
+            say(f"Paired and trusted {name}; connecting.")
+            self.bus.call(BLUEZ, path, DEVICE, "Connect", None, None, Gio.DBusCallFlags.NONE,
+                          15000, None, connected)
+
+        def connected(bus, result):
+            try:
+                bus.call_finish(result)
+            except GLib.Error as error:
+                # The pad usually connects by itself right after pairing.
+                if "Already" not in error.message and "InProgress" not in error.message:
+                    say(f"Connecting {name}: {error.message}")
+            self.busy.discard(address)
+
+        self.bus.call(BLUEZ, path, DEVICE, "Pair", None, None, Gio.DBusCallFlags.NONE,
+                      30000, None, paired)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--window", type=int, default=30, help="seconds to keep trying (default 30)")
+    parser.add_argument("--adapter", metavar="ADDRESS", help="Bluetooth adapter to use (default: a USB one if present)")
+    parser.add_argument("--status", action="store_true", help="list adapters and known controllers and exit; no scan")
+    arguments = parser.parse_args()
+    try:
+        pairing = Pairing(arguments.window, arguments.adapter)
+        if arguments.status:
+            pairing.status()
+            return 0
+        return pairing.run()
+    except GLib.Error as error:
+        say(f"Bluetooth error: {error.message}")
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

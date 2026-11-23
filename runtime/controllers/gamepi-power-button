@@ -1,0 +1,159 @@
+#!/usr/bin/python3
+"""Give the Pi's power button two jobs.
+
+  short press            open the controller pairing window
+  held two seconds       clean shutdown (what a short press did before)
+
+The button's input device is grabbed, so systemd-logind does not also act on
+the press. If this service stops, the grab is released and the stock
+behaviour returns. Holding the button for about ten seconds still cuts power:
+that is done by the Pi's hardware.
+
+Runs as a system service (root). Feedback is a short tone through the logged-in
+user's sound session: one beep when the window opens, a rising pair when a
+controller connects, a low tone when none did. GAMEPI_BUTTON_SOUND=0 silences it.
+"""
+import fcntl
+import glob
+import math
+import os
+import pwd
+import select
+import struct
+import subprocess
+import sys
+import threading
+import time
+import wave
+
+EVENT = struct.Struct("llHHi")      # struct input_event on 64-bit Linux
+EV_KEY, KEY_POWER = 1, 116
+EVIOCGRAB = 0x40044590
+HOLD_SECONDS = 2.0
+PAIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "gamepi-controller-pair")
+SOUNDS = "/run/gamepi-power-button"
+
+
+def log(message):
+    print(message, flush=True)
+
+
+def find_button():
+    for name in glob.glob("/sys/class/input/event*/device/name"):
+        with open(name) as stream:
+            if stream.read().strip() == "pwr_button":
+                return "/dev/input/" + name.split("/")[4]
+    return None
+
+
+def make_tone(path, notes):
+    """Write a small WAV: notes is [(frequency in Hz, seconds)]."""
+    rate = 22050
+    frames = bytearray()
+    for frequency, seconds in notes:
+        count = int(rate * seconds)
+        for i in range(count):
+            fade = min(1.0, i / 300, (count - i) / 300)   # no clicks
+            frames += struct.pack("<h", int(9000 * fade * math.sin(2 * math.pi * frequency * i / rate)))
+    with wave.open(path, "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(rate)
+        output.writeframes(bytes(frames))
+
+
+def spawn(command, **options):
+    """Start a child and collect it when it ends, so it never lingers as a zombie."""
+    child = subprocess.Popen(command, **options)
+    threading.Thread(target=child.wait, daemon=True).start()
+    return child
+
+
+def play(name):
+    """Best effort: play a tone in the session of whoever owns a PipeWire socket."""
+    if os.environ.get("GAMEPI_BUTTON_SOUND", "1") == "0":
+        return
+    for socket in glob.glob("/run/user/*/pipewire-0"):
+        runtime = os.path.dirname(socket)
+        try:
+            user = pwd.getpwuid(int(os.path.basename(runtime))).pw_name
+        except (KeyError, ValueError):
+            continue
+        spawn(["runuser", "-u", user, "--", "env", f"XDG_RUNTIME_DIR={runtime}",
+               "pw-play", f"{SOUNDS}/{name}.wav"],
+              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return
+
+
+def classify(read_event, clock=time.monotonic, wait=None):
+    """Yield "short" or "long" for each press.
+
+    read_event(timeout) returns (type, code, value) or None on timeout.
+    "long" is reported as soon as the button has been held for HOLD_SECONDS,
+    without waiting for release.
+    """
+    pressed_at = None
+    while True:
+        timeout = None if pressed_at is None else max(0.0, pressed_at + HOLD_SECONDS - clock())
+        event = read_event(timeout)
+        if event is None:                       # held long enough
+            pressed_at = None
+            yield "long"
+            continue
+        kind, code, value = event
+        if kind != EV_KEY or code != KEY_POWER:
+            continue
+        if value == 1:
+            pressed_at = clock()
+        elif value == 0 and pressed_at is not None:
+            pressed_at = None
+            yield "short"
+
+
+def main():
+    device = find_button()
+    if not device:
+        log("No pwr_button input device; nothing to do.")
+        return 1
+    os.makedirs(SOUNDS, exist_ok=True)
+    make_tone(f"{SOUNDS}/start.wav", [(880, 0.12)])
+    make_tone(f"{SOUNDS}/success.wav", [(660, 0.12), (990, 0.18)])
+    make_tone(f"{SOUNDS}/failure.wav", [(220, 0.35)])
+
+    button = os.open(device, os.O_RDONLY)
+    fcntl.ioctl(button, EVIOCGRAB, 1)
+    log(f"Holding {device}: short press pairs a controller, a {HOLD_SECONDS:g} s hold shuts down.")
+
+    def read_event(timeout):
+        ready, _, _ = select.select([button], [], [], timeout)
+        if not ready:
+            return None
+        kind, code, value = EVENT.unpack(os.read(button, EVENT.size))[2:]
+        return kind, code, value
+
+    pairing = None
+    for press in classify(read_event):
+        if pairing is not None and pairing.poll() is not None:
+            pairing = None
+        if press == "long":
+            log("Held: shutting down.")
+            subprocess.run(["systemctl", "poweroff"])
+            return 0
+        if pairing is not None:
+            log("Pressed, but a pairing window is already open.")
+            continue
+        log("Pressed: opening the controller pairing window.")
+        play("start")
+        # The child reports its own result with a tone when it ends.
+        pairing = spawn([sys.executable, __file__, "--pair"])
+    return 0
+
+
+def pair_and_report():
+    result = subprocess.run([PAIR, "--window", "30"]).returncode
+    play("success" if result == 0 else "failure")
+    return result
+
+
+if __name__ == "__main__":
+    sys.exit(pair_and_report() if sys.argv[1:] == ["--pair"] else main())

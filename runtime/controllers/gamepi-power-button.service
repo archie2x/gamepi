@@ -1,0 +1,11 @@
+[Unit]
+Description=Gamepi power button: short press pairs a controller, long press shuts down
+After=bluetooth.service
+
+[Service]
+ExecStart=/usr/bin/gamepi-power-button
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

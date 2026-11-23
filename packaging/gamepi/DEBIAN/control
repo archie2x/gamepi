@@ -1,0 +1,10 @@
+Package: gamepi
+Version: 0.1.0
+Section: games
+Priority: optional
+Architecture: all
+Maintainer: Gamepi <archie2x@users.noreply.github.com>
+Depends: gamepi-amdgpu (= 0.1.0), gamepi-kiosk (= 0.2.0), gamepi-remote-input (= 0.1.0), gamepi-controllers (= 0.1.0)
+Description: Gamepi Raspberry Pi 5 gaming appliance
+ Installs the tested GPU/kernel setup, frontend, emulators and kiosk session.
+ ROMs, BIOS images, user saves and Bluetooth pairing state are separate.
